@@ -1,0 +1,277 @@
+Kenny Goossens - Tang Ah-Lun
+Certificaten
+
+Voorbereiding:
+############################################################
+1.Wat is de functie van een certificaat?
+Voor authenticatie/integriteit en beveiliging.
+
+2.Hoe wordt het aangevraagd, indien het subject 
+   een server-programma is?
+Serverprogramma genereert een Certificate Sign Request (CSR)
+Dit dient getekend te worden door een CA.
+Getekende certificaat van CA kan je gebruiken om de
+pending request bij het programma te vervolledigen.
+
+3.Wat is PKCS10?
+Regelgeving hoe de berichten voor CSR proces moeten opgesteld
+worden.
+
+Opgave deel 1: installatie van een CA
+############################################################
+
+KEPLER (Standalone root + IIS):
+Start -> Administrative Tools -> Server Manager:
+Add roles:
+Active directory certificate services selecteren -> Next
+Certification authotiy & web enrollment 
+   -> add required services
+Standalone kiezen, root ca, create a new private key
+Common name for this ca: KEPLER-CA
+
+Joule (IIS installeren):
+Start -> Administrative Tools -> Server Manager:
+Add roles:
+Webserver (IIS) aanklikken
+
+Certificaat downloaden op Joule: 
+	via http://kepler.iii.hogent.be/certsrv
+KEPLER-CA toevoegen als trusted root authority
+Certificate subject:
+	CN = joule.iii.hogent.be
+	OU = fef
+	O = tiwi
+	L = Sinaai
+	S = Oost-Vlaanderen
+	C = BE
+Serial number:
+	?61 31 c5 b3 00 00 00 00 00 03
+Issuer:
+	CN = KEPLER-CA
+Certification path:
+	KEPLER-CA
+		joule.iii.hogent.be
+
+Opgave deel 2: configureren van IIS voor SSL
+############################################################
+
+Certificaat request aanmaken bij Internet Information 
+Services (IIS) manager:
+Create Certificate Request => invullen 
+   (common name = kepler.iii.hogent.be)
+Het verkregen request laten tekenen door de CA:
+http://kepler.iii.hogent.be/certsrv
+Request a certificate->Advanced certificate request 
+->Submit a certificate request by using a base-64-encoded 
+CMC or PKCS #10 file, or submit a renewal request by using 
+a base-64-encoded PKCS #7 file. 
+=> Hierin dient het aangemaakt certificaat gekopieerd
+
+KEPLER:
+Certificiation authority->Pending requests
+->rechtsklikken en kiezen voor issue
+
+Instelling zodat de site enkel bereikbaar is via https en
+niet via http? 
+=> De http-binding verwijderen. Er dient ook een 
+https-binding toegevoegd worden zodat dit werkt.
+Bij https-binding toevoegen, moet je het juiste certificaat
+selecteren.
+
+Wat gebeurt er bij de eerste verbinding en waarom?
+=> We krijgen een beveiligingswaarschuwing te zien, omdat
+het geleverde certificaat door de webserver (IIS) niet
+geverifieerd kon worden door de webbrowser. De root CA die
+het certificaat ondertekend heeft, is nog niet toegevoegd in
+de trusted root ca. Na installeren van de root CA, en
+heropstarten van de browser, kan de browser deze wel
+verifieren omdat het de issuer vertrouwd.
+Nadat het certificaat geverifieerd is, wordt de common name
+in het certificaat gebruikt om de server te verifieren.
+Als die verschilt met de naam van de website in de adresbalk,
+dan wordt er ook een beveiligingswaarschuwing gegeven.
+Common name in ons certificaat is kepler.iii.hogent.be
+http://kepler/ -> waarschuwing
+http://kepler.iii.hogent.be/ -> alles geverifieerd
+
+Veronderstel dat je ingelogd bent op een Linux-toestel en 
+dat je wil surfen naar het toestel waarop je zonet IIS hebt 
+geconfigureerd. Welk certificaat, of certificaten, 
+voeg je toe om geen certificaatfoutmelding te krijgen?
+=> Het root certificaat als trusted root ca.
+
+
+Opgave deel 3: configureren van Apache voor SSL
+############################################################
+Via site: aphrodite.iii.hogent.be/certsrv : 
+Download a CA certificate, certificate chain, or CRL
+->Install this ca certificate (alles aanvinken van trust)
+
+KEPLER:
+yum install httpd openssl
+
+openssl genrsa -des3  -out 
+   kepler.iii.hogent.be.key 1024
+openssl rsa -in kepler.iii.hogent.be.key \
+    -out kepler.iii.hogent.be.key.unsecure
+openssl req -new -key kepler.iii.hogent.be.key \
+ -out kepler.iii.hogent.be.csr
+=> informatie aanvullen: COMMON NAME = kepler.iii.hogent.be
+http://aphrodite.iii.hogent.be/certsrv
+->Request a certificate
+->advanced certificate request. Inhoud van de csr-file 
+erin plakken => geeft fout
+
+openssl pkcs7 -print_certs -in certnew.p7b 
+	-out kepler.iii.hogent.be_certificaat.cer
+
+In /etc/httpd/conf.d/ssl.conf:
+Standaard geconfigureerde virtualhost aanpassen:
+<VirtualHost _default:443>
+ServerName kepler.iii.hogent.be:443
+SSLEngine on
+SSLCertificateFile /root/certs/kepler.iii.hogent.be_certificaat.cer
+SSLCertificateKeyFile /root/certs/kepler.iii.hogent.be.key
+</VirtualHost>
+
+Na herstarten Apache kregen we een fout.
+Geselecteerde private sleutel is geencrypteerd met symmetrische
+encryptie DES3, om die te kunnen gebruiken zou Apache de
+passphrase node moeten hebben. We gebruiken gewoon de
+gedecrypteerde versie van de private sleutel:
+SSLCertificationKeyFile /root/certs/kepler.iii.hogent.be.key.unsecure
+
+
+testen: surfen naar 
+   https://kepler.iii.hogent.be (ook joule kan eraan)
+bij het klikken op adresbalk kan je certificaatinformatie zien
+
+Opgave deel 4: gebruik van S/MIME
+############################################################
+Configuratie terug goed ingesteld, wel met verbinding van
+eth1 naar eth1. Bij opstarten dienen de nameservers telkens
+nog manueel aangepast te worden.
+
+
+Thuis afgewerkt: 
+
+tijdelijke CA op http://home.ahta.nu/certsrv/
+root CA certificaat werd opgeslagen als home.ahta.nu.cer
+
+Installeer het root CA certificaat als trusted root CA in 
+thunderbird.
+preferences -> advanced -> Authorities
+Importeren
+
+
+Nieuwe key genereren
+openssl genrsa -des3  -out ahluntang.key 1024
+
+Gedecrypteerde private key:
+openssl rsa -in ahluntang.key -out ahluntang.key.unsecure
+
+CSR genereren:
+openssl req -new -key ahluntang.key -out ahluntang.csr
+
+Bij kiezen van Naam en email moet je er op letten
+dat je exact dezelfde gegevens gebruikt als bij je
+instellingen in thunderbird, de afzender en adres van het 
+emailbericht wordt aan de hand van de informatie in deze key 
+gecontroleerd.
+
+
+CSR indienen op de site van de CA.
+
+In de CA goedkeuren.
+
+Van de website het certificaat (base64 versie) downloaden 
+als ahluntang_base64.cer
+
+Thunderbird vereist certificaat in pkcs12 formaat:
+openssl pkcs12 -export -out ahluntang.pfx -inkey ahluntang.key -in ahluntang_base64.cer -certfile home.ahta.nu.cer 
+kies passphrase voor pkcs12
+
+In thunderbird ahluntang.pfx importeren:
+preferences -> advanced -> Your Certificates
+importeren en passphrase invullen
+
+Bovenstaande stappen opnieuw uitvoeren voor andere gebruiker kennygoosens.
+
+
+Vraag: waarom wordt naar een wachtwoord gevraagd?
+Om het te decrypteren
+
+Verzend naar je compagnon een bericht dat je probeert te 
+encrypteren. Waarom lukt dat niet?
+Waarom lukt dit wel als je naar jezelf een e-mail stuurt?
+Omdat die je publieke sleutel nog niet heeft om het te
+decrypteren.
+Omdat je zelf wel de sleutel hebt.
+
+Verzend een ondertekend bericht naar je compagnon. 
+Bij ontvangst wordt het gebruikte certificaat automatisch 
+ge•nstalleerd. Controleer dit en verifieer ook de vingerafdruk.
+Hoe wordt de boodschap getoond?
+
+Met een envelopje met rode zegel erop, oldskool.
+Zelfs na bewerken blijft het ondertekend.
+
+Vraag 1: wordt de boodschap 'signed' of 'clear signed' verstuurd?
+Vraag 2: Hoe kan je dat uitmaken, waaraan kan je dat zien?
+Vraag 3: Wat is het verschil tussen beide manieren?
+Clear Signed.
+Content-Type: multipart/signed; protocol="application/pkcs7-signature";
+
+Handtekening zelf: 
+Content-Type: application/pkcs7-signature; name="smime.p7s"
+Content-Transfer-Encoding: base64
+
+Signed:
+standaard digitale handtekening (hash and sign)
+Clear signed:
+standaard digitale handtekening, enkel handtekening is 
+geencrypteerd via base64
+
+
+
+Pas nu eens de naam en het e-mail-adres van je account aan en 
+stuur nu opnieuw een gesigneerde e-mail en kijk wat er gebeurt.
+Verklaar!
+Je krijgt een envelopje met een vraagteken op. Dit betekent dat
+de informatie die in de handtekening niet klopt met de informatie
+van de afzender.
+
+Verstuur een ge‘ncrypteerd bericht (niet ondertekend). 
+Pas opnieuw het ontvangen bericht aan en kijk wat er gebeurt als
+Thunderbird opnieuw is opgestart. Verklaar.
+Thunderbird kan het bericht niet meer decrypteren.
+
+
+Verstuur een bericht dat zowel gecodeerd als gehandtekend is. 
+Wat is het formaat?
+application/pkcs7-mime
+
+Verander de file vooraan in het bestand en kijk wat er met 
+het getoond bericht gebeurt. 
+Bericht kan niet meer gedecrypteerd worden.
+
+Doe hetzelfde met uitsluitend een wijziging achteraan. Verklaar.
+Bericht kan wel nog gedecrypteerd worden.
+Blijkbaar wordt alles na de juiste content weggegooid
+
+
+Ga na op welke manier een certificaat wordt aangevraagd.
+Bekijk hiertoe de bron van de webpagina in Firefox. 
+Wat gebeurt er precies bij het 'submitten' van het formulier.
+Bij submit:
+javascript vult nog enkele hidden fields in met extra informatie
+zoals de user agent van de browser, tijd/datum...
+
+Waar wordt de private en de publieke sleutel aangemaakt?
+Op de pc die de csr genereert. Publieke sleutel wordt
+getekend door de CA.
+
+Welke sleutel(s) zit(ten) opgeslagen in het certificaat?
+Publieke sleutel van gebruiker dat gehandtekend is.
+In dat certificaat zit er ook informatie over de issuer
+zodat je het certificaat kan verifieren.

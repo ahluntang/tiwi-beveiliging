@@ -1,0 +1,295 @@
+Ah Lun Tang
+
+
+========================================================
+Voorbereiding, alles wordt een scriptje geschreven,
+het scriptje gaat uit van het blacklisting principe
+Alles dat niet gespecifieerd wordt moet doorgelaten worden
+ ==> accept mode (theorieles)
+
+inhoud beginscript:
+##############################
+#!/bin/bash
+
+# eerst alles flushen
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t mangle -F
+iptables -t mangle -X
+
+#default policy (accepteren)
+iptables -P INPUT ACCEPT
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+##############################
+
+========================================================
+Controleer of je een ftp-connectie kan leggen met je machine. 
+Indien niet, voer dan het commando /etc/rc.d/init.d/vsftpd start uit.
+Stel regels op die er voor zorgen dat geen enkele computer 
+een ftp-verbinding kan maken met jouw machine.
+
+FTP verbinding : destination poort 21 (connectie)
+				   20 (overdracht)
+DROP of REJECT doen
+
+DROP: client krijgt connection timeout
+REJECT: client krijgt conneciton refused
+
+# restricties opleggen
+#iptables -A INPUT -p tcp --dport 20 -j REJECT
+#iptables -A INPUT -p tcp --dport 21 -j REJECT
+iptables -A INPUT -p tcp --dport 20 -j DROP
+iptables -A INPUT -p tcp --dport 21 -j DROP
+
+
+========================================================
+Laat nadien selectief alleen ftp vanaf je eigen computer 
+naar jezelf toe. Test zeer kritisch: gebruik zowel localhost
+,de naam, het ip-adres als de loopback van je machine.
+
+ACCEPT regels moeten voor de bijhorende DROP regels komen
+ACCEPT doe je via -I (insert)
+DROP of REJECT doe je via -A (append achteraan)
+
+#ftp toelaten enkel van 127.0.0.1
+iptables -I INPUT -s 127.0.0.1 -p tcp --dport 20 -j ACCEPT
+iptables -I INPUT -s 127.0.0.1 -p tcp --dport 21 -j ACCEPT
+
+
+# restricties opleggen
+iptables -A INPUT -p tcp --dport 20 -j REJECT
+iptables -A INPUT -p tcp --dport 21 -j REJECT
+
+
+========================================================
+Controleer of je een telnet-connectie kan leggen met je 
+machine. Indien dit niet het geval is, doe dan de nodige 
+aanpassingen aan de configuratie van xinetd.
+Wanneer telnet niet voorkomt in de /etc/xinetd.d/ directory, 
+voer dan yum install telnet-server uit.
+Zorg ook dat er op jouw computer een webserver draait.
+Stel nadien dezelfde twee regels in (cfr. 1 en 2) voor de 
+protocols www en telnet.
+
+telnet installeren
+/etc/init.d/xinitd start
+
+poorten 80 (http) en 23 (telnet) accepten
+
+# web voor lokaal
+iptables -I INPUT -s 127.0.0.1 -p tcp --dport 80 -j ACCEPT
+# de rest voor web blokkeren 
+iptables -A INPUT -p tcp --dport 80 -j REJECT
+# telnet voor lokaal
+iptables -I INPUT -s 127.0.0.1 -p tcp --dport 23 -j ACCEPT
+# de rest voor telnet blokkeren
+iptables -A INPUT -p tcp --dport 23 -j REJECT
+
+========================================================
+Maak nu gebruik van de optie multiport om al de vorige 
+regels te groeperen.
+
+#lokale toegang web, telnet en ftp
+iptables -I INPUT -s 127.0.0.1 -p tcp -m multiport --dports 20,21,23,80 -j ACCEPT
+
+# de rest blokkeren
+iptables -A INPUT -p tcp -m multiport --dports 20,21,23,80 -j REJECT
+
+========================================================
+Ga voor het telnet-protocol na wat de effectverschillen zijn 
+tussen de opties DROP en REJECT bij het instellen van de regels.
+Bij REJECT kan je ook zelf kiezen uit een aantal icmp-type 3 
+foutboodschappen. Test uit.
+
+Zie ook vraag 1 voor drop en reject
+DROP
+Dropt de pakketten zonder een waarschuwing aan de verzender te geven.
+REJECT
+Dropt de pakketten maar stuurt een ICMP bericht terug naar de
+verzender. Dit type kan aangepast worden in de --reject-with optie.
+
+
+
+mogelijke foutboodschappen:
+icmp-net-unreachable
+icmp-host-unreachable
+icmp-port-unreachable
+icmp-proto-unreachable
+icmp-net-prohibited
+icmp-host-prohibited
+icmp-admin-prohibited 
+iptables -A INPUT -p tcp -m multiport --dports 20,21,23,80 -j REJECT --reject-with icmp-port-unreachable
+
+telnet geeft Connection refused
+
+
+
+
+========================================================
+Stel in dat er vanop je computer geen enkele connectie naar 
+gonzo.iii.hogent.be kan gelegd worden. Zorg er wel voor dat 
+je vooraf test welke soorten verbindingen er wel kunnen 
+gemaakt worden.
+uitgaande verbinding: OUTPUT
+naar gonzo: destination
+dig A gonzo.iii.hogent.be
+-> ipadres nodig
+192.168.16.17
+192.168.134.17
+
+iptables -A OUTPUT -d 192.168.16.17 -j REJECT 
+iptables -A OUTPUT -d 192.168.134.17 -j REJECT
+========================================================
+Nadien laat je enkel toe dat je de webpagina's op 
+gonzo.iii.hogent.be kan bekijken. Test ook of de andere 
+verbindingen effectief niet mogelijk zijn.
+
+iptables -I OUTPUT -p tcp -d 192.168.16.17 --dport 80 -j ACCEPT
+
+========================================================
+Zorg ervoor dat er op geen enkele poort boven 1024 
+informatie kan verstuurd worden naar moore.iii.hogent.be.
+Test bijvoorbeeld dat http wel werkt, maar dat de 
+tomcat-server op poort 8080 niet te bereiken is.
+
+iptables -A OUTPUT -d 192.168.16.8   -p tcp -m multiport --dports 1024:65535 -j REJECT
+iptables -A OUTPUT -d 192.168.134.8 -p tcp -m multiport --dports 1024:65535 -j REJECT
+iptables -A OUTPUT -d 192.168.16.8   -p udp -m multiport --dports 1024:65535 -j REJECT
+iptables -A OUTPUT -d 192.168.134.8 -p udp -m multiport --dports 1024:65535 -j REJECT
+
+
+========================================================
+Maak dat je eigen machine niet kan gepingd worden. 
+Dit kan je verwezenlijken op verschillende manieren: 
+langs ingangszijde geen aanvragen toelaten, langs 
+uitgangszijde geen antwoord sturen. Probeer beide 
+mogelijkheden uit.
+
+# inkomende ping request blokkeren
+iptables -A INPUT -p icmp --icmp-type echo-request -j REJECT
+# uitgaande ping reply blokkeren
+iptables -A  OUTPUT -p icmp --icmp-type echo-reply -j REJECT
+
+Bij inkomende ping request krijgt de verzende: 
+destination unreachable
+bij uitgaande blokkering: krijgt de originele ping request 
+verzender niets
+de destination unreachable werd naar degene gestuurd die 
+de ping reply deed.
+========================================================
+
+DEEL 2:
+default policy wordt nu drop  (whitelisting)
+
+nieuw script:
+
+##########################################
+#!/bin/bash
+
+# eerst alles flushen
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t mangle -F
+iptables -t mangle -X
+
+#default policy (DROP) 
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT DROP
+##########################################
+
+controle: geen enkele verbinding werkt: surfen gaat niet, 
+telnet gaat niet, dns namen opvragen gaat niet enz...
+========================================================
+Zorg er in eerste instantie voor dat je eigen machine 
+in staat is om DNS-namen op te vragen. Controleer met 
+nslookup (vb. www.google.be).
+Zorg er ook voor dat de gateway-computer van je 
+netwerk jouw DNS-server kan bereiken.
+
+# dns aanvraag doen.
+iptables -I OUTPUT  -p udp --dport 53 -j ACCEPT
+iptables -I INPUT   -p udp --dport 53 -j ACCEPT
+# antwoord
+iptables -I INPUT   -p udp --sport 53 -j ACCEPT
+iptables -I OUTPUT  -p udp --sport 53 -j ACCEPT
+
+
+
+======================================================= 
+
+
+# uitgaande connecties naar gonzo.
+iptables -I OUTPUT -p tcp -d 192.168.16.17  --dport 80 -j ACCEPT
+iptables -I OUTPUT -p tcp -d 192.168.134.17 --dport 80 -j ACCEPT
+
+# We laten bestaande connecties van gonzo toe.
+iptables -I INPUT -p tcp -s 192.168.16.17  --sport 80 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+iptables -I INPUT -p tcp -s 192.168.134.17 --sport 80 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+
+
+
+========================================================
+Stel nu een regel op die het mogelijk maakt om je eigen 
+machine als webserver te gebruiken. Laat dit controleren
+ door een van je buren.
+
+iptables -I INPUT   -p tcp -s 0/0   -d 192.168.16.82 --dport 80 -j ACCEPT
+iptables -I OUTPUT  -p tcp -s 192.168.16.82 -d 0/0   --sport 80 -j ACCEPT
+
+
+
+==========================================================
+
+Stel nu regels op die het mogelijk maken om je eigen machine 
+als FTP-server te kunnen laten gebruiken: je computer moet 
+door een ftp-client bij je buur kunnen gebruikt worden om 
+er bestanden van op te halen en er op te plaatsen; gebruik 
+hiervoor een van de gewone tiwi-gebruikers.
+In welke mode moet het ftp-commando een connectie leggen 
+opdat de firewallinstellingen effect zouden hebben?
+Ga na of je effectief ook bestanden kan uitwisselen.
+
+iptables -I INPUT   -p tcp -s 0/0  --dport 21 -j ACCEPT
+iptables -I INPUT   -p tcp -s 0/0  --dport 20 -j ACCEPT
+
+
+iptables -I OUTPUT  -p tcp  -d 0/0 --sport 21 -j ACCEPT
+iptables -I OUTPUT  -p tcp  -d 0/0 --sport 20 -j ACCEPT
+
+
+ACTIVE Mode
+
+=======================================
+Tracht alle (normaal 6) regels die je hebt ingesteld in 
+de twee vorige punten 12 en 13 te combineren tot twee regels.
+
+iptables -I INPUT  -p tcp -s 0/0 -m multiport --dports 20,21,80 -j ACCEPT
+iptables -I OUTPUT -p tcp -d 0/0 -m multiport --sports 20,21,80 -j ACCEPT
+
+=========================================
+Vanuit je machine moet je in staat zijn om naar
+ andere computers te pingen. Denk even na over hoe je
+dit kan uittesten.
+Zorg er voor dat je eigen computer niet reageert op 
+ping-aanvragen van andere machines.
+
+iptables -A OUTPUT -p icmp --icmp-type echo-request -d 0/0   -j ACCEPT
+iptables -A INPUT  -p icmp --icmp-type echo-reply   -s 0/0   -j ACCEPT
+
+=========================================
+
+Extra's
+A: Probeer van op je eigen computer ook nog de 
+webpagina's van tiwi.be op te vragen.
+B: Probeer ook de webpagina's van intranet.tiwi.be 
+op te vragen.
+
+
+iptables -I INPUT -p tcp -s 193.190.126.66  -m conntrack --ctstate ESTABLISHED -m multiport --sports 80,443 -j ACCEPT
+iptables -I OUTPUT -p tcp -d 193.190.126.66  -m multiport --dports 80,443 -j ACCEPT
+
+

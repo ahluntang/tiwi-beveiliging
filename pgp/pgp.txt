@@ -1,0 +1,300 @@
+Ah-Lun Tang
+===========================================================
+
+-----------------------------------------------------------
+1. Maak voor gebruiker pgp1 drie sleutelparen aan (RSA and 
+RSA, DSA en RSA). Voor gebruikers pgp2 en pgp3 maak je 
+telkens twee sleutelparen aan, een RSA and RSA sleutelpaar 
+en een DSA-sleutelpaar. Zorg er voor dat elke sleutel een 
+verschillend userID heeft dat de naam van de gebruiker 
+bevat en de encryptiemethode.
+Kies een verschillende geldigheidsperiode voor deze 
+sleutels.
+Vraag 1: waartoe dient de passphrase?
+Vraag 2: waarom wordt er bij het aanmaken van een sleutel
+ soms naar extra toetsaanslagen gevraagd en soms ook niet?
+Vraag 3: wat is het verschil tussen "RSA and RSA" en 
+"DSA and Elgamal"?
+
+useradd pgp[1-4]
+voor elke gebruiker genereren:
+gpg --gen-key
+stappen volgen
+
+#### RSA and RSA
+pub   2048R/C2564C38 2012-11-08
+      Key fingerprint = CBAC 0392 114C 37BC DEC3  B874 F969 D79E C256 4C38
+uid                  user 1 <pgp1@hogent.be>
+#### DSA (sign only)
+pub   2048D/3C05D702 2012-11-08 [expires: 2012-11-11]
+      Key fingerprint = C941 9153 94B3 692E 92E1  9C8F D85C AB6A 3C05 D702
+uid                  user1dsa <user1@hogent.be>
+
+### RSA (sign only)
+pub   2048R/3284F424 2012-11-08 [expires: 2012-11-14]
+      Key fingerprint = 0683 A621 031F 8112 ED57  247D FB01 B05E 3284 F424
+uid                  user1rsa <pgp1@hogent.be>
+
+
+user 2
+#### RSA AND RSA
+pub   2048R/C2D12FAF 2012-11-08
+      Key fingerprint = 26DE 9CD1 CC26 4EA9 9697  790D 28F9 AC23 C2D1 2FAF
+uid                  user 2 <pgp2@hogent.be>
+
+#### DSA
+pub   2048D/54E703A5 2012-11-08 [expires: 2012-11-11]
+      Key fingerprint = CEAB BF9D 389D A89A D0F9  A369 613B 4C14 54E7 03A5
+uid                  user 2dsa <pgp2@hogent.be>
+
+
+user 3
+#### RSA AND RSA
+pub   2048R/B5184913 2012-11-08 [expires: 2012-11-11]
+      Key fingerprint = BC2B 2351 33C7 F881 DD6A  8BC7 3704 4A27 B518 4913
+uid                  user 3 <pgp3@hogent.be>
+sub   2048R/3E0CD9F7 2012-11-08 [expires: 2012-11-11]
+
+
+#### DSA
+pub   2048D/3775C92E 2012-11-08
+      Key fingerprint = 9AFB D533 3D35 486D 61D9  AB8A 4D1F 36E3 3775 C92E
+uid                  user 3dsa <pgp3@hogent.be>
+
+
+Vraag 1: 
+wordt gebruikt om uw private sleutel te encrypteren
+
+Vraag 2: 
+als extra input voor de random generator maakt het  wat
+meer random
+
+Vraag 3:
+RSA and RSA en RSA en Elgamal kan je gebruiken om te 
+encrypteren
+RSA en DSA is enkel om te handtekenen
+
+-----------------------------------------------------------
+2.Exporteer al je publieke sleutels naar meerdere 
+bestanden die je aan andere gebruikers kan aanbieden.
+Exporteer ze in 2 verschillende formaten, waarvan er één
+ geschikt is voor transport via e-mail of publicatie 
+op een webserver.
+Vraag: wat is het formaat van deze bestanden? 
+
+gpg --export -o export
+binair formaat
+gpg --export -a -o export.txt
+ASCII, gemakkelijker door te sturen
+
+-----------------------------------------------------------
+3. Wissel dergelijke bestanden uit met de andere gebruikers.
+We gaan er op dit ogenblik van uit dat sleutels die op deze
+ manier zijn verkregen, volledig te vertrouwen zijn.
+
+voor elke gebruiker/bestand:
+scp exportkeys.txt pgp2@localhost:.
+ naar elke gebruiker
+
+voor onderscheid bestanden zijn nu:
+keyspgp1.txt  keyspgp2.txt  keyspgp3.txt
+-----------------------------------------------------------
+4. Voeg voor elke gebruiker de verkregen publieke sleutels
+ toe aan zijn publieke sleutelhanger.
+Verifieer of ze wel zijn opgenomen.
+Verwijder een van de sleutels uit de sleutelhanger. 
+Controleer. Voeg hem er nadien weer bij.
+
+gpg --import keyspgp1.txt
+
+gpg --list-key
+of
+gpg --list-keys
+
+gpg --delete-key FINGERPRINTID
+(verkorte ID die getoond werd bij importeren)
+
+
+
+-----------------------------------------------------------
+5. Editeer een van de sleutels: verander de passeerzin.
+
+gpg --edit-key C2564C38
+
+passwd
+oud passphrase invullen
+nieuw passphrase invullen (2x)
+
+-----------------------------------------------------------
+6. Controleer de sleutels en de handtekeningen die er bij 
+horen.
+Verifieer de fingerprint van de sleutels bij de 
+verschillende gebruikers.
+Zorg er voor dat al de sleutels in de sleutelhangers 
+volledig vertrouwd worden, indien dit nog niet het geval zou zijn.
+Teken voor elke gebruiker de eigen sleutels en die van de 
+andere gebruikers van wie de sleutel vertrouwd wordt.
+
+Opnieuw edit key
+dan in gpg interactive console
+trust
+5
+y
+ultimate trust geven aan de key
+
+
+
+-----------------------------------------------------------
+7. Maak als gebruiker gpg1 vijf korte tekstbestanden aan 
+om ze nadien aan de andere gebruikers over te maken.
+Default algo: CAST
+
+gpg -c bestand1.txt
+gpg --cipher-algo AES256 -c bestand1.txt 
+
+bestand 2; voor gebruiker 2
+met publieke key van gebruiker 2
+
+gpg -e bestand2.txt
+ID van publieke key van gebruiker 2 opgeven
+eindigen met lege regel
+
+bestand 3
+meerdere publieke key ids opgeven
+eindigen met lege regel
+
+bestand 4
+analoog als voor bestand 2
+maar bij oproep commando:
+--for-your-eyes-only
+gebruiken
+
+gpg -e --for-your-eyes-only bestand4.txt
+
+
+bestand 5
+Supported algorithms:
+Pubkey: RSA, RSA-E, RSA-S, ELG-E, DSA
+Cipher: 3DES, CAST5, BLOWFISH, AES, AES192, AES256, TWOFISH, CAMELLIA128, 
+        CAMELLIA192, CAMELLIA256
+Hash: MD5, SHA1, RIPEMD160, SHA256, SHA384, SHA512, SHA224
+Compression: Uncompressed, ZIP, ZLIB, BZIP2
+
+staat er niet tussen
+dus gewoon eens met een symmetrisch encryptie geprobeerd
+
+gpg --symmetric -a bestand5.txt
+
+
+
+-----------------------------------------------------------
+8. Veeg de originele plaintextbestanden uit.
+Probeer nu de plaintext te herstellen uitgaande van de 
+ciphertext van elk bestand.
+Controleer wat er al dan niet nog kan gebeuren.
+
+als pgp2:
+gpg --decrypt bestand1.txt.gpg 
+vindt sleutel niet
+
+
+als pgp1 
+passphrase invullen
+en werkt wel
+
+
+
+gpg --decrypt bestand2.txt.gpg
+
+-> secret key not available
+
+gpg --decrypt bestand3.txt.gpg
+passphrase opgeven
+
+gpg --decrypt bestand4.txt.gpg > uitvoer.txt
+vraagt passphrase -> passphrase invullen
+'Note: sender requested "four-your-eyes-only"'
+
+gpg --decrypt bestand5_symm
+passphrase opgeven
+-----------------------------------------------------------
+9. Wissel al de geëncrypteerde bestanden uit met de
+ gebruikers gpg2 en gpg3.
+
+reeds gedaan in 8
+
+
+-----------------------------------------------------------
+10. Decrypteer alle ontvangen bestanden. 
+Beschrijf in elk van de gevallen wat er gebeurt.
+Vraag: wat is het verschil tussen het al dan niet 
+gebruiken van de optie -d. Test uit.
+zie vraag 8
+
+-d aangeven om de decrypteren; POSIX formaat --decrypt
+
+
+-----------------------------------------------------------
+11. Maak als gebruiker gpg2 drie nieuwe tekstbestanden aan. 
+Behandel ze als volgt:
+ teken het eerste bestand en encrypteer het voor gebruiker
+  gpg1;
+ plaats een handtekening op het tweede bestand;
+ maak van het derde bestand een gehandtekende file die
+  bruikbaar is voor e-mail.
+Maak een kopie van een van de bestanden en verander die 
+zodat de handtekening niet meer klopt.
+Wissel deze bestanden uit met de andere gebruikers.
+
+tekenen en encrypteren voor een andere gebruiker
+gpg -s -e bestand1.txt
+juiste ontvanger zijn key selecteren om te encyrpteren
+voor die gebruiker
+
+enkel tekenen
+gpg -s bestand2.txt
+
+tekenen en zorgen voor cleartext output:
+gpg --clearsign bestand3.txt
+
+-----------------------------------------------------------
+12. Decrypteer de ontvangen bestanden en verifieer de 
+handtekening.
+verifieren via
+gpg --verify bestand.txt.asc
+of bestand.gpg
+als je tampered met de file:
+gpg: CRC error; B81B30 - 5030D5
+gpg: [don't know]: invalid packet (ctb=4c)
+gpg: no signature found
+gpg: the signature could not be verified.
+Please remember that the signature file (.sig or .asc)
+should be the first file given on the command line.
+
+
+
+
+-----------------------------------------------------------
+13. Maak van een nieuw tekstbestand een apart handtekeningcertificaat. 
+Zorg er voor dat deze tekst ook door de 2 andere gebruikers wordt getekend.
+Wissel de tekst en de handtekenigen uit en controleer.
+Test uit wat er gebeurt indien je het originele tekstbestand verwijderd hebt.
+
+via -b
+gpg --verify bestand.txt.sig
+
+als je bestand.txt verwijdert en je wilt verifieren
+gpg: no signed data
+gpg: can't hash datafile: file open error
+
+
+-----------------------------------------------------------
+14. Maak van een tekstbestand een clear-signed document.
+ Wat is de inhoud?
+ zie vraag 11
+eens getekend; kan je het gemakkelijk gebruiken om te mailen
+(ASCII)
+-----------------------------------------------------------
+15.
+
+-----------------------------------------------------------

@@ -1,0 +1,260 @@
+Kenny Goossens Ah-Lun Tang
+Groep: 15
+
+Vooraf backup maken (op beide systemen)
+ cp -r /etc /etc_backup
+
+2 computers: Kepler en Joule
+
+Netwerkconfiguratie beide computers:
+ Kepler:
+  ifconfig eth0  192.168.65.1 netmask 255.255.255.0 up
+  route add default gw  192.168.65.254
+ Joule:
+  ifconfig eth1 192.168.65.254 netmask 255.255.255.0 up
+  ifconfig eth0 192.168.16.81 netmask 255.255.255.0 up
+  route add default gw 192.168.16.8 eth0
+
+Netwerkconfiguratie permanent instellen
+kepler:
+#### /etc/sysconfig/network-scripts/ifcfg-eth0 ####
+DEVICE=eth0
+BOOTPROTO=static
+IPADDR=192.168.16.81
+NETMASK=255.255.255.0
+GATEWAY=192.168.65.254
+ONBOOT=yes
+###################################################
+Joule
+
+#### /etc/sysconfig/network-scripts/ifcfg-eth0 ####
+DEVICE=eth0
+BOOTPROTO=static
+IPADDR=192.168.65.1
+NETMASK=255.255.255.0
+GATEWAY=192.168.16.8
+ONBOOT=yes
+###################################################
+
+#### /etc/sysconfig/network-scripts/ifcfg-eth1 ####
+DEVICE=eth0
+BOOTPROTO=static
+IPADDR=192.168.65.254
+NETMASK=255.255.255.0
+ONBOOT=yes
+###################################################
+
+DNS: verantwoordelijk voor zone groep15.iii.hogent.be
+
+Primaire DNS op Kepler:
+
+configuratie /etc/named.conf
+ - forwarder toevoegen bij options
+ - belangrijk voor testen: allow-transfer {any;};
+ - zodat je via dig op eender welk toestel kan volledige
+   zone opvragen (dig axfr)
+ - directory voor zone-bestanden is /var/named
+ - 2 zones:
+   1. forward lookup zone groep15.iii.hogent.be
+   2. reverse lookup zone 65.168.192.in-addr.arpa
+
+#### /etc/named.conf ####
+options {
+	directory 	"/var/named";
+	dump-file 	"/var/named/data/cache_dump.db";
+    statistics-file "/var/named/data/named_stats.txt";
+    memstatistics-file "/var/named/data/named_mem_stats.txt";
+	allow-query     { any; };
+	allow-transfer {any;};
+	recursion yes;
+	forwarders {192.168.16.8; };
+};
+
+logging {
+        channel default_debug {
+				syslog daemon;
+                severity dynamic;
+        };
+};
+
+zone "groep15.iii.hogent.be" IN {
+	type master;
+	file "groep15.iii.hogent.be.dns";
+	allow-transfer {any;};
+};
+
+zone "65.168.192.in-addr.arpa" IN {
+	type master;
+	file "65.168.192.in-addr.arpa.dns";
+};
+include "/etc/named.rfc1912.zones";
+include "/etc/named.root.key";
+#########################
+Syntax te controleren via named-checkconf
+
+Zonebestanden aanmaken in /var/named/
+Lage TTL voor test doeleinden
+Zonebestand voor groep15.iii.hogent.be.dns
+#### /var/named/groep15.iii.hogent.be.dns ####
+$TTL 60
+@	IN SOA	groep15.iii.hogent.be. ahluntang.groep15.iii.hogent.be. (
+					1	; serial
+					60	; refresh
+					1H	; retry
+					60	; expire
+					3H )	; minimum
+		IN	NS	kepler
+kepler	IN	A	192.168.65.1
+joule	IN	A	192.168.65.254
+##############################################
+
+#### /var/named/65.168.192.in-addr.arpa.dns ####
+$TTL 60
+@	IN SOA	65.168.192.in-addr.arpa. ahluntang.groep15.iii.hogent.be. (
+					0	; serial
+					60	; refresh
+					1H	; retry
+					60	; expire
+					3H )	; minimum
+		IN	NS		kepler.groep15.iii.hogent.be.
+1 			PTR 	kepler.groep15.iii.hogent.be.
+254			PTR		joule.groep15.iii.hogent.be.
+################################################
+
+Syntax te controleren named-checkzone
+named-checkzone groep15.iii.hogent.be groep15.iii.hogent.be.dns
+named-checkzone 65.168.192.in-addr.arpa 65.168.192.in-addr.arpa.dns
+
+Indien nodig, eigenaars op de zone bestanden juist instellen
+chown named:named groep15.iii.hogent.be.dns
+chown named:named 65.168.192.in-addr.arpa.dns
+
+Joule wordt gateway/router, secundaire dns server
+Instellen als router:
+ sysctl -w net.ipv4.ip_foward=1
+Permanent:
+#### /etc/sysctl.conf ###
+net.ipv4.ip_foward = 1
+#########################
+
+
+Subnet broadcasten via xorp (RIP)
+#### /root/rip.boot  ####
+interfaces {
+    interface eth0 {
+		vif eth0 {
+		    address 192.168.16.81  {
+				prefix-length: 24
+		    }
+		}
+    }
+    interface eth1 {
+		vif eth1 {
+		    address 192.168.65.254 {
+				prefix-length: 24
+		    }
+		}
+    }
+}
+
+fea {
+    unicast-forwarding4 {
+		disable: false
+    }
+}
+
+policy {
+    /* Describe connected routes for redistribution */
+    policy-statement connected {
+		term export {
+		    from {
+				protocol: "connected"
+		    }
+		}
+    }
+}
+
+policy {
+    /* Describe static routes for redistribution */
+    policy-statement static {
+		term export {
+		    from {
+				protocol: "static"
+		    }
+		}
+    }
+}
+
+protocols {
+    rip {
+	    /* Redistribute connected and static routes */
+		export: "connected,static"
+
+	    /* Run on specified network interface addresses */
+		interface eth0 {
+		    vif eth0 {
+				address 192.168.16.81 {
+				    disable: false
+				}
+		    }
+		}
+	    /* Run on specified network interface addresses */
+		interface eth1 {
+		    vif eth1 {
+				address 192.168.65.254 {
+				    disable: false
+				}
+		    }
+		}
+    }
+}
+#########################
+
+XORP met configuratie opstarten:
+/usr/local/xorp/sbin/xorp_rtrmgr -b /root/rip.boot
+
+
+Joule als secundaire dns configureren.
+Gebruik type slave samen met masters optie.
+#### /etc/named.conf ####
+options {
+	directory 	"/var/named";
+	dump-file 	"/var/named/data/cache_dump.db";
+    statistics-file "/var/named/data/named_stats.txt";
+    memstatistics-file "/var/named/data/named_mem_stats.txt";
+	allow-query     { any; };
+	allow-transfer	{ any; };
+	forwarders { 192.168.16.8; };
+};
+
+logging {
+        channel default_debug {
+                syslog daemon;
+                severity dynamic;
+        };
+};
+
+zone "groep15.iii.hogent.be" IN {
+	type slave;
+	file "groep15.iii.hogent.be.dns";
+	masters { 192.168.65.1; };
+};
+
+zone "65.168.192.in-addr.arpa" IN {
+	type slave;
+	file "65.168.192.in-addr.arpa.dns";
+	masters { 192.168.65.1; };
+};
+include "/etc/named.rfc1912.zones";
+include "/etc/named.root.key";
+#########################
+Zone bestanden worden automatisch aangemaakt door named.
+
+
+op beide toestellen: /etc/resolv.conf
+#### /etc/resolv.conf ####
+nameserver 192.168.65.1
+nameserver 192.168.65.254
+domain groep15.iii.hogent.be
+options rotate
+##########################

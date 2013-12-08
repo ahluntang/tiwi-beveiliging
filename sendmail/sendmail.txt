@@ -1,0 +1,364 @@
+Groep 15
+Kenny Goossens - Ah Lun Tang
+
+Voorbereidingsvragen
+###########################################################
+1. Wat is de padnaam van het configuratiebestand van 
+Sendmail?
+/etc/mail/sendmail.cf => moeizaam aan te passen
+dus aanpassen via /etc/mail/sendmail.mc
+
+2. Welke aanpassingen zijn er nodig aan de DNS-instellingen
+om berichten te kunnen versturen naar jouw domein?
+Forward lookup zones: emailadres =>
+A voor alle hosts en MX voor alle mailservers
+(priority 10)
+
+3. Waar vind je de logs van Sendmail?
+/var/log/maillog (ook voor elk bericht bijgehouden
+naar wie het werd doorgestuurd)
+
+4. Hoe wordt de configuratie-file bruikbaar gemaakt voor 
+de sendmail-deamon?
+Het bestand sendmail.cf wordt bruikbaar gemaakt door
+het macrobestand sendmail.mc
+=> include(`/usr/share/sendmail-cf/m4/cf.m4') niet
+vergeten
+m4 /etc/mail/sendmail.mc > /etc/mail.sendmail.cf
+/etc/init.d/sendmail restart
+
+5. Wat moet je aanpassen om te zorgen dat alle post voor 
+gebruiker tiwi1 terechtkomt bij 
+voornaam.famnilienaam@jouwdomein.iii.hogent.be?
+1) via aliasing: /etc/aliases, na wijziging commando
+newaliases! (door systeembeheerder)
+tiwi1: voornaam.famnilienaam@jouwdomein.iii.hogent.be
+
+2) .forward (door gebruiker)
+in /home/tiwi1/.forward: 
+voornaam.famnilienaam@jouwdomein.iii.hogent.be
+
+3) Address Mappings (Virtuser):
+FEATURE(`virtusertable') in sendmail.mc
+/etc/mail/virtusertable: 
+voornaam.famnilienaam@jouwdomein.iii.hogent.be
+/etc/mail/local-host-names: jouwdomein.iii.hogent.be
+makemap hash virtusertable.db < virtusertable
+/etc/init.d sendmail restart
+
+6. Wat moet je aanpassen in de configuratie zodat 
+berichten afkomtstig uit een ander domein dan het jouwe 
+tegengehouden worden? Berichten versturen naar andere 
+domeinen moet evenwel nog wel mogelijk zijn.
+/etc/mail/access aanpassen:
+	localhost	OK
+	domain	REJECT
+makemap hash /etc/mail/access.db < /etc/mail/access
+/etc/mail/sendmail.mc: FEATURE(`access_db')
+m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+
+Voorbereiding
+###########################################################
+Probleem bij opstarten: we hadden geen internet
+=> Oplossing: in ifcfg_eth0 networkscript gateway verkeerd
+	      gateway aangepast naar 192.168.16.8
+
+[root@joule named]# useradd tiwi3 -p "e=mc**2"
+[root@joule named]# useradd tiwi4 -p "e=mc**2"
+[root@(none) ~]# yum install spamass-milter;
+
+
+1) Pas de configuratiebestanden van sendmail aan zodat deze
+nog enkel de hoogstnodige minimale instellingen bevatten.
+Ga na of je nu met deze basisconfiguratie via jouw
+mailserver,,een mail kan versturen naar een lokale 
+gebruiker. Controleer ook of je een mail kan versturen naar 
+een lokale gebruiker van het andere domein. Een e-mail 
+versturen kan je m.b.v. het commando mail -v (of -vv om nog 
+meer informatie te verkrijgen).
+###########################################################
+DNS aanvullen met MX-record 
+(zonebestand groep15.iii.hogent.be bij kepler):
+@	IN	MX	10 mail
+mail	IN	A	192.168.65.1
+
+Configuratie in /etc/mail/sendmail.mc van Kepler:
+include(`/usr/share/sendmail-cf/m4/cf.m4')dnl
+OSTYPE(`linux')dnl 
+define(`confMAX_HOP',`25')dnl
+define(`confSMTP_LOGIN_MSG',`$j mailer ready at $b')dnl 
+define(`confMIME_FORMAT_ERRORS',`False')dnl 
+FEATURE(`promiscuous_relay')dnl 
+FEATURE(`accept_unqualified_senders')dnl 
+FEATURE(`use_cw_file')dnl 
+MASQUERADE_AS(groep15.iii.hogent.be)dnl 
+MAILER(smtp)dnl 
+
+Via de macro het saindmail.cf bestand opbouwen:
+m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+OF
+/etc/mail/make commando
+
+Service (her)starten:
+service sendmail (re)start
+
+/etc/mail/local-host-names:
+groep15.iii.hogent.be
+
+/etc/hosts: 
+127.0.0.1 localhost.localdomain localhost kepler 
+		kepler.groep15.iii.hogent.be
+
+Mail testen:
+Sturen:
+mail -vv tiwi1@groep15.iii.hogent.be
+(bericht eindigen met punt op lijn of ctrl+d)
+Ontvangen:
+mail-u tiwi1
+
+Problemen:
+Door het copypasten in het sendmail.mc bestand, stonden
+er spaties achter sommige regels waardoor de service niet
+startte. Oplossing: overal dnl achter plaatsen!
+
+
+2) Pas de configuratie van sendmail aan zodat post die 
+bestemd is voor lokale gebruikers niet meer wordt 
+rondgestuurd naar eventuele andere mailservers.
+###########################################################
+Met de macro FEATURE(`use_cw_file') in het bestand 
+/etc/mail/sendmail.mc vertel je aan Sendmail dat het in
+het bestand /etc/mail/local-host-names moet kijken om te 
+weten welke mails plaatselijk verwerkt moeten worden.
+
+/etc/mail/local-host-names:
+groep15.iii.hogent.be
+
+3) Alle post die bestemd is voor gebruiker root dient te 
+worden bezorgd aan gebruiker tiwi3. tiwi1 is een alias voor 
+jouwvoornaam.jouwnaam@jouwdomein.iii.hogent.be. tiwi2 is 
+net zoals tiwi1 een alias maar dan voor je collega. Welke 
+bestanden heb je aangepast en welke informatie heb je aan 
+die bestanden toegevoegd? Probeer dit eerst vanuit het 
+lokale domein en nadien vanuit een ander domein.
+###########################################################
+/etc/aliases:
+root:tiwi3
+ahluntang:tiwi1 		
+kennygoossens:tiwi2
+
+newaliases (commando uitvoeren)
+
+
+4) Maak een mailing list aan met de naam
+domeinbeheerders@jouwdomein.iii.hogent.be. Alle post die 
+naar dit adres wordt verstuurd, wordt doorgestuurd naar 
+jouw e-mailadres, in de vorm 
+voornaam.naam@jouwdomein.iii.hogent.be, en naar het 
+mailadres van je collega. Bovendien dienen deze berichten 
+te worden gearchiveerd in het bestand /var/domeinbeheer.
+###########################################################
+/etc/aliases_mail aanmaken (enkel gebruikt voor mailing-
+list) met volgende inhoud:
+domeinbeheerders : ahluntang, kennygoossens
+
+newaliases
+
+in /etc/mail/sendmail.mc volgende regel toevoegen:
+define(`ALIAS_FILE',`/etc/aliases, /etc/aliases_mail')
+
+m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+service sendmail restart
+
+Uittesten:
+mail -v domeinbeheerders@groep15.iii.hogent.be
+tiwi1 en tiwi2 hebben mail ontvangen
+
+Mails archiveren:
+in /etc/aliases_mail:
+domeinbeheerders: ahluntang, kennygoossens, beheerdersarchief
+beheerdersarchief: /var/domeinbeheer
+
+touch /var/domeinbeheer
+newaliases
+
+Probleem: mails voorlopig nog niet gearchiveerd
+Oplossing: 
+rechten(schrijven) veranderen op beheerdersarchief
+met commando's:
+chmod a+w /var/domeinbeheer
+chown mail:mail domeinbeheer
+
+
+5) Zorg er voor dat wanneer je een reply doet op een mail 
+met een ontvangstadres van de vorm 
+voornaam.naam@jouwdomein.iii.hogent.be, deze mail verstuurd 
+wordt met als afzender 
+voornaam.naam@jouwdomein.iii.hogent.be en niet als 
+tiwi1@jouwdomein.iii.hogent.be.
+###########################################################
+Configuratie van /etc/mail/sendmail.mc aanvullen met:
+FEATURE(`genericstable')
+FEATURE(`generic_entire_domain')
+GENERICS_DOMAIN(`groep15.iii.hogent.be')
+
+Make commando:
+m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+
+Sendmail herstarten:
+/etc/init.d/sendmail restart 
+
+Bestand genericstable aanmaken:
+touch /var/mail/genericstable
+
+Het volgende in dit bestand plaatsen:
+tiwi1 ahluntang@groep15.iii.hogent.be
+tiwi2 kennygoossens@groep15.iii.hogent.be 
+
+Generictable omzetten van tekstbestand naar een
+hash database:
+makemap hash genericstable.db < genericstable
+
+
+6) Lees de man-pagina van het commando mail en gebruik dit 
+commando met bijhorende opties om op de routing-computer 
+jouw persoonlijke berichten via POP3 van de mailserver af 
+te halen. Beantwoord een ontvangen bericht. Kijk na of 
+alles correct werkt.
+Opgelet: Voor een correcte werking van dovecot overschrijf
+ je het configuratiebestand door dit bestand.
+###########################################################
+1. Om dovecot te testen eerst via grafische manier mbv 
+evolution:
+Op Joule:
+yum install evolution
+evolution openen en account aanmaken:
+server = kepler.groep15.iii.hogent.be
+gebruikersnaam = tiwi2
+POP gebruiken
+naam = kennygoossens
+emailadres = kennygoossens@groep15.iii.hogent.be
+
+Op Kepler:
+yum install dovecot
+We hebben het niet geconfigureert zoals in de opgave
+staat door het bestand te overschrijven, maar hebben
+de aparte configuratiebestanden aangepast:
+bestand /etc/dovecot/conf.d/10-auth.conf aanvullen met:
+	disable_plaintext_auth = no
+bestand /etc/dovecot/conf.d/10-mail.conf aanvullen met:
+	mail_privileged_group = mail
+	mail_location = mbox:~/mail:INBOX=/var/mail/%u
+	mail_access_groups = mail
+
+dovecot starten:
+/etc/init.d/dovecot start
+
+Uittesten:
+Op joule kunnen we nu inloggen op evolution en de
+mails lezen.
+
+2. Nu op Joule nog via commando mail dit instellen:
+mail -f pop3://tiwi2@kepler.groep15.iii.hogent.be
+
+Opmerking: evolution moet uti staan want anders
+kunnen we de mails niet lezen omdat evolution
+deze van de server verwijdert.
+
+
+7) Alle berichten die verstuurd worden naar de bestemming 
+tiwi4@jouwdomein.iii.hogent.be moeten aan 
+tiwi4@jouwnaburigdomein.iii.hogent.be worden bezorgd.
+Stel in op 2 verschillende manieren en test telkens uit.
+###########################################################
+Op Kepler:
+1. Virtualuser:
+in /etc/mail/sendmail.mc volgende toevoegen:
+	FEATURE(`virtusertable')
+/etc/mail/virtusertable aanvullen met:
+tiwi4@groep15.iii.hogent.be tiwi4@groep32.iii.hogent.be
+
+Hash maken:
+makemap hash virtusertable.db < virtusertable
+
+Sendmail service herstarten:
+service sendmail restart
+
+2. Aliases:
+/etc/aliases aanpassen:
+tiwi4: tiwi4@groep32.iii.hogent.be
+
+newaliases-commando uitvoeren
+
+Uittesten: mail zenden naar tiwi4@groep15.iii.hogent.be
+en kijken of groep 32 dit ontvangt.
+
+
+8) Voor deze vraag gebruik je telnet of nc om een connectie 
+te leggen met de mailserver van een ander domein.
+Verzend op deze manier een bericht met als afzender 
+een gebruiker van een willekeurig domein en als 
+bestemmeling een gebruiker van jouw domein. Welke 
+instellingen zijn hier van belang.
+Zorg er nadien voor dat dit niet meer mogelijk is en dat 
+e-mail verzenden als een gebruiker van een onbestaand domein
+ niet meer mogelijk is. Test dit grondig uit.
+###########################################################
+Telnet-sessie starten met mailserver van groep32:
+telnet maxwell.groep32.iii.hogent.be 25
+
+Onze groep aanduiden:
+HELO groep15.iii.hogent.be
+
+Mail sturen:
+MAIL FROM: tiwi2@groep32.iii.hogent.be
+RCPT TO: tiwi2@groep15.iii.hogent.be
+DATA
+Subject: onderwerp
+Inhoud van de mail
+.
+
+De mail is nu verstuurd van tiwi2@groep32.iii.hogent.be
+naar tiwi2@groep15.iii.hogent.be.
+
+Voor een onbestaand domein dient er bij MAIL FROM een
+domein te staan dat niet bestaat: bv. tiwi2@onzin.be
+
+Om te verhinderen dat onbestaande domeinen kunnen sturen
+dient in het configbestand van sendmail volgende regel
+weggelaten te worden:
+FEATURE(`promiscuous_relay')
+
+Daarna dient het make-commando gebruikt te worden en 
+de service herstart te worden:
+m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+/etc/init.d/sendmail restart 
+
+Testen door telnet-sessie en mail te sturen vanaf
+onbekend domein. Dit lukt niet:
+553 5.1.8 tiwi2@onzin.be Domain of sender tiwi2@onzin.be
+adress does not exist
+
+
+9) Verander de configuratie van sendmail zodat nu ook alle 
+berichten die afkomstig zijn van het naburige domein 
+tegengehouden worden. Mail die verstuurd wordt naar dit 
+domein moet evenwel doorgelaten worden.
+###########################################################
+/etc/mail/access aanpassen:
+localhost	OK
+groep32.iii.hogent.be	REJECT
+
+makemap hash /etc/mail/access.db < /etc/mail/access
+
+in /etc/mail/sendmail.mc toevoegen:
+FEATURE(`access_db')
+
+m4 /etc/mail/sendmail.mc > /etc/mail/sendmail.cf
+/etc/init.d/sendmail restart 
+
+Groep32 kan ons geen mails meer sturen.
+
+
+###########################################################
+

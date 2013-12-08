@@ -1,0 +1,315 @@
+Kenny Goossens en Ah-Lun Tang
+Groep 15
+
+###########################################################
+Labo SSH en X-server
+###########################################################
+
+Opgave deel 1: SSH
+###########################################################
+1. Hostbased-authenticatie
+-----------------------------------------------------------
+Testgebruiker aanmaken
+userad tiwi1
+
+We gebruiken Joule (onze gateway) als ssh server.
+We gebruiken Kepler (onze client en primaire dns)
+als ssh client.
+
+Configureren van Joule als SSH daemon op Joule:
+configuratiebestand = /etc/ssh/sshd_config 
+
+Authenticatie via ~/.shosts:
+
+Gebruiker tiwi1 moet vanop afstand toegang krijgen tot
+de gateway via ssh.
+su tiwi1
+toegang mag enkel vanaf kepler.groep15.iii.hogent.be
+echo kepler.groep15.iii.hogent.be >> ~/.shosts
+schrijfrechten beveiligen tegen andere gebruikers
+chmod og-w ~/.shosts
+
+Terug naar root via de opdracht exit (of su)
+/etc/ssh/sshd_config aanpassen:
+HostbasedAuthentication yes
+IgnoreRhosts no
+
+service opstarten:
+service sshd start
+
+Testen:
+op client (kepler):
+ssh tiwi1@joule.groep15.iii.hogent.be
+werkt zonder problemen
+ssh hacker@joule.groep15.iii.hogent.be
+PERMISSION DENIED.
+
+Om dit hosts globaal (alle gebruikers)toe te voegen, kan
+je ze in /etc/hosts.equiv toevoegen in plaats van ~/.shosts
+
+Vraag: waarom werkt deze laatste instelling niet voor root?
+Uit veiligheidsoverweging, root is een superuser dat alles
+kan aanpassen.
+
+Vraag: waarom werkt hostbased authenticatie alleen als de 
+ingelogde lokale gebruiker dezelfde is als de 
+remote-gebruiker (dus niet via ssh -l); test en verklaar.
+Omdat de ssh client standaard de gegevens gebruikt dat
+het in de huidige sessie vindt om in te loggen.
+Zoals de huidige gebruikersnaam.
+Normale mensen gebruiken van eerste keer ssh user@host
+of geven -l optie mee (ssh -l user host).
+
+2. Public Host keys
+-----------------------------------------------------------
+Lokatie configuratiebestand van ssh-client:
+/etc/ssh/ssh_config (systemwide)
+en
+~/.ssh/config (per gebruiker)
+
+Sleutels van nieuwe hosts niet automatisch toevoegen.
+systemwide aanpassing (ssh_config):
+StrictHostKeyChecking yes
+
+Waarom wordt bij leggen van connectie volgende vraag
+gesteld?
+Omdat de fingerprint van de key (dat de server geeft om 
+zijn authenticiteit te verifiëren) niet klopt met wat er 
+staat in ~/.ssh/known-hosts, er moet dan nagegaan worden
+of je weldegelijk met de juiste server verbindt, bv. er
+werd een nieuwe key gegenereerd omdat de vorige
+gecomprimitteerd was. Anders is het mogelijk dat je met
+een malafide server probeert te verbinden.
+
+Wat is het doel van het vermelden van de RSA fingerprint?
+Om de authenticiteit van de server te controleren, zodat
+je niet met de verkeerde server verbindt.
+
+De optie voorziet in drie parameters: ask/yes/no. 
+Hoe zou je ze instellen en waarom? Bespreek.
+yes: strikte controle: niet automatisch nieuwe toevoegen
+	manuele interventie vereist.
+no: geen controle: alles wordt zonder meer toegevoegd
+ask: er wordt gevraagd aan de gebruiker of de key
+	toegevoegd moet worden indien er nog geen key
+	fingerprint bewaard werd voor deze host.
+
+Wat moet er gebeuren indien deze optie op 'yes' staat?
+Dan moet je de fingerprints eerst toevoegen aan
+~/.ssh/known_hosts
+
+3. Configureer de server op je machine zo dat
+-----------------------------------------------------------
+Server = Joule
+Geen root login mogelijk is:
+/etc/ssh/sshd_config aanpassen:
+PermitRootLogin no
+service sshd restart
+
+Er alleen login mogelijk is vanuit twee naburige clients
+/etc/ssh/sshd_config aanpassen:
+DenyUsers *
+AllowUsers *@kepler.groep15.iii.hogent.be
+AllowUsers *@joule.groep15.iii.hogent.be
+
+service sshd restart
+
+4. Publieke-sleutel-authenticatie
+-----------------------------------------------------------
+Op server (Joule):
+/etc/ssh/sshd_config aanpassen:
+PubKeyAuthentication yes
+
+Op client (Kepler):
+ssh-keygen -t rsa
+er wordt een passphrase gevraagd
+hiermee wordt de private sleutel geëncrypteerd via een
+symmetrische cryptalgoritme.
+Als de private sleutel dan nodig is en nog niet
+gedecrypteerd is in de huidige sessie, dan zal je de
+passphrase moeten ingeven om de private sleutel te
+kunnen gebruiken.
+ssh-keygen maakt een private en publieke sleutel:
+~/.ssh/id_rsa (privaat, geëncrypteerd)
+~/.ssh/id_rsa.pub (publiek)
+
+Publieke sleutel moet toegevoegd worden aan
+~/.ssh/authorized_keys op de server (Joule).
+Op de client:
+ssh-copy-id -i ~/.ssh/id_rsa.pub tiwi1@joule.groep15.iii.hogent.be
+
+Kan ook via SCP, omslachtiger, maar goed alternatief als
+ssh-copy-id niet in de distributie beschikbaar is:
+scp ~/.ssh/id_rsa.pub tiwi1@joule.groep15.iii.hogent.be:.
+Op server:
+echo id_rsa.pub >> ~/.ssh/authorized_keys
+
+
+Configureer de server zo dat de toegang beperkt wordt tot 
+slechts één enkele machine.
+Op server: authorized_keys aanpassen
+voor de publieke sleutel, op dezelfde regel, plaats
+je het volgende, gevolgd door een spatie:
+from="kepler.groep15.iii.hogent.be"
+
+5. Gebruikers toelaten of uitsluiten
+-----------------------------------------------------------
+Na uitvoerig testen:
+/etc/hosts.allow : als je client hierin gevonden wordt, dan
+kan je met de client toegang krijgen tot de service.
+/etc/hosts.deny : je krijgt geen toegang tot de service.
+hosts.allow krijgt voorrang op hosts.deny
+Er wordt eerst gekeken in het allow bestand, als er niets
+gevonden wordt, dan wordt ook het deny bestand geraadpleegd
+Opmerking: op de laatste regel moet er een witregel staan,
+anders werkt de regel niet.
+
+6. X11-portforwarding
+-----------------------------------------------------------
+Op server (Joule): /etc/sshd_config aanpassen
+X11Forwarding yes
+
+op client verbinden met optie -X
+ssh -X tiwi@joule.groep15.iii.hogent.be
+dan een X11-compatibele applicatie opstarten
+firefox &
+de applicatie wordt zichtbaar op de client.
+Zonder de forwarding: foutmelding
+cannot open display
+
+7. Portforwarding
+-----------------------------------------------------------
+poort 8888 wordt doorgestuurd naar poort 22 op andere
+computer:
+ssh -L 8888:kepler.groep15.iii.hogent.be:22 tiwi1@joule.groep15.iii.hogent.be
+Toepassing:
+bv. om een ssh server als proxy te gebruiken, bv. voor 
+region restricted videos op youtube kan je een buitenlandse 
+ssh server gebruiken
+
+=Local forwarding
+
+2. Remote forwarding
+ssh -R 8888:kepler.groep15.iii.hogent.be:22 tiwi1@joule.groep15.iii.hogent.be
+Als je vanop afstand niet aan een bepaalde service op een
+client vanop het werk niet kan, kan je op de gateway een
+vrije poort gebruiken en die verbinding wordt dan
+doorgetunneld naar de client binnen de werkvloer. Zodat
+die poort (22) op die client van buitenaf beschikbaar is op
+poort 8888.
+= Remote forwarding
+
+8. Remote root-login
+-----------------------------------------------------------
+Op server /etc/ssh/sshd_config aanpassen
+AllowUsers root@*
+AllowGroups root
+Er wordt geverifieerd of de gebruiker correct is, en als de
+groep correct is.
+
+9. SFTP
+-----------------------------------------------------------
+sftp tiwi1@joule.groep15.iii.hogent.be
+naar path navigeren (lokaal)
+lcd foobar
+naar path navigeren (op server)
+cd public_html
+put index.html
+get style.css
+
+10. SCP
+-----------------------------------------------------------
+Zie ook deel bij Publieke-sleutel-authenticatie 
+je kan ook downloaden vanaf een ssh-server
+scp tiwi1@joule.groep15.iii.hogent.be:foobar ~/Downloads/foobar
+
+Opgave deel 2: X windowing system
+###########################################################
+eerst juiste packages installeren:
+yum install xclock xterm twm
+
+tty consoles veranderen via ctrl+alt+f[1-6]
+veranderen van runlevel 3 via opdracht:
+init 3
+
+11. maak ~/.xinitrc
+-----------------------------------------------------------
+touch ~/.xinitrc
+
+startx
+werkt nog niet.
+Eerst .xinitrc aanpassen met x11 clients
+
+12. Toon xclock en xterm
+-----------------------------------------------------------
+.xinitrc aanpassen:
+xclock -g 100x100-0+0 -bw 0 &
+xterm -g 100x100+0+0 -bw 0
+
+Als er nog een applicatie achter moet staan, niet vergeten om
+& te gebruiken
+
+startx werkt nu
+
+13. twm gebruiken
+-----------------------------------------------------------
+.xinitrc aanpassen:
+xclock -g 100x100-0+0 -bw 0 &
+xterm -g 100x100+0+0 -bw 0 &
+fwm
+
+startx
+
+Hoe moet je nu de X-server stoppen?
+Op lege plaats op bureaublad klikken en kiezen voor exit.
+
+14. Door welk proces of programma wordt de X-server gestart?
+-----------------------------------------------------------
+xinit
+
+15. Met welke parameters werd de X-server (Xorg) opgestart?
+-----------------------------------------------------------
+xinit gebruikt ~/.xinitrc voor de opstartparameters
+
+
+16. Welke parameter zal naar alle waarschijnlijkheid 
+X-clients verhinderen om met jouw X-server te connecteren?
+Hoe kun je ervoor zorgen dat remote X-clients een verbinding 
+kunnen maken met jouw X-server
+-----------------------------------------------------------
+XDMCP aanzetten
+
+
+17. Wat doet het commando xhost. Voeg nu de computer van 
+je buur toe als vertrouwde host.
+-----------------------------------------------------------
+Programma dat zorgt voor toeglaten xclients
+xhost kepler.groep15.iii.hogent.be
+xhost joule.groep15.iii.hogent.be
+
+
+
+18. Stel de DISPLAY-variabele zo in dat bij het het 
+uitvoeren van xterm het venster wordt getoond op het 
+display van je buur en niet op je eigen display.
+-----------------------------------------------------------
+DISPLAY=kepler.groep15.iii.hogent.be:0.0
+
+
+
+19. Log via ssh in op het toestel van je buur en open een
+xterm-venster op jouw display.
+Moet je de DISPLAY-omgevingsvariabele instellen?
+-----------------------------------------------------------
+export DISPLAY
+sshtiwi1@joule.groep15.iii.hogent.be
+
+
+
+20. Voeg aan het commando ssh een parameter toe zodat je op
+de remote computer de DISPLAY-omgevingsvariabele niet meer
+hoeft in te stellen.
+-----------------------------------------------------------
+ssh -X gebruiken
+
+

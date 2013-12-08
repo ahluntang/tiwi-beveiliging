@@ -1,0 +1,157 @@
+Ah-Lun Tang
+labo pam
+-----------------------------------------------------------
+root in extra console
+ctrl+alt+f[2-5]
+inloggen als root
+
+2 extra gebruikers:
+
+groupadd -g 520 groep1
+groupadd -g 420 groep2
+useradd -u 520 -g 520 gebruiker1
+useradd -u 420 -g 420 gebruiker2
+passwd gebruiker1
+passwd gebruiker2
+
+
+------------------------------------------------------------
+1. Configureer PAM zodat de meeste modules debug-informatie 
+wegschrijven.
+Vraag: In welk(e) bestand(en) komt deze informatie terecht?
+
+In /etc/pam.d/system-auth bij modules  debug toevoegen
+als parameter
+
+################### system-auth #####################
+....
+auth        required      pam_env.so debug
+auth        sufficient    pam_fprintd.so debug
+auth        sufficient    pam_unix.so nullok try_first_pass debug
+auth        requisite     pam_succeed_if.so uid >= 500 debug
+auth        required      pam_deny.so debug
+...
+#####################################################
+
+te vinden in /var/log/secure
+
+
+-----------------------------------------------------------
+2. Pas de configuratie aan zodat een gebruiker 5 kansen
+krijgt om een aanvaardbaar nieuw wachtwoord in te geven 
+bij het wijzigen van zijn wachtwoord.
+
+retry op 5 zetten
+
+password    requisite     pam_cracklib.so try_first_pass retry=5 type=
+
+testen met passwd
+na 5 nieuwe wachtzoorden die te kort zijn of teveel gelijke
+tekens, volgende foutmelding scherm:
+passwd: Have exhausted maximum number of retries for service
+
+in log:
+Nov  8 11:07:28 kepler passwd: gkr-pam: no password set, 
+and use_authtok was specified
+------------------------------------------------------------
+3. Pas het systeem aan zodat gebruikers met uid>500 niet
+ kunnen inloggen en die met een uid<500 wel. Test uit met
+ de nieuw aangemaakte gebruikers.
+
+succeed if uid aanpassen/toevoegen in su/login
+#####################################
+auth        requisite     pam_succeed_if.so uid < 500 
+account     requisite    pam_succeed_if.so uid < 500
+#####################################
+
+-----------------------------------------------------------
+4. Bij systeemonderhoud is het wenselijk dat niet-root
+-gebruikers zich voor een bepaalde tijd niet kunnen 
+aanmelden; pas dit toe voor ssh en voor login. 
+Zorg hiervoor en maak dat gebruikers die dit toch proberen
+ een passende boodschap te zien krijgen. 
+
+ echo "System maintenance, only Gandalf can use this computer at the moment" > /etc/nologin
+
+test:
+ssh gebruiker1@localhost
+gebruiker1@localhost's password: 
+System maintenance, only Gandalf can use this computer at the moment
+
+Connection closed by ::1
+
+verbinding sluit, test met root, je krijgt ook dit bericht
+maar verbinding blijft open staan
+
+[root@kepler etc]# ssh root@localhost
+root@localhost's password: 
+System maintenance, only Gandalf can use this computer at the moment
+-----------------------------------------------------------
+5. Hoe kan je instellen dat gebruiker pam1 enkel kan 
+inloggen vanop één van de buurcomputers? Noteer de nodige 
+handelingen in je verslag, uittesten en dus ook configureren 
+hoeft niet.
+
+system-auth aanpassen
+###############################
+auth requisite pam_access.so accessfile=/etc/access.conf debug
+###############################
+
+in access.conf voor gebruiker1 je eigen subnet toevoegen
+met + om te accepteren; de rest via - weigeren.
+All other users should be denied to get access from all sources
+@ gebruiken als je een groep wilt specifieren, bv: @hobbits
+##############################
++:gebruiker1:192.168.65.0/24
+-:ALL:ALL
+##############################
+
+------------------------------------------------------------
+6. Configureer PAM zodanig dat root uitsluitend nog kan
+ inloggen vanop tty4. Vergeet niet om root nog steeds 
+ingelogd te houden op 1 andere console!
+
+cp /etc/securetty /etc/securetty.bak
+
+alles in commentaar zetten; behalve tty4
+
+-----------------------------------------------------------
+7. Zorg ervoor dat lokaal inloggen en inloggen via ssh enkel 
+mogelijk is op donderdagen van 10 tot 12. Uiteraard pas je 
+deze tijden aan om te kunnen testen.
+
+/etc/pam.d/sshd  en /etc/pam.d/login aanpassen:
+#####################################
+account   required   pam_time.so
+####################################
+
+/etc/security/time.conf aanpassen:
+####################################
+login;*;*;Th1000-1200
+sshd;*;*;Th1000-1200
+###################################
+tijden eens veranderen om te kijken of je geweigerd wordt
+
+-----------------------------------------------------------
+
+8. Zorg ervoor dat lokaal inloggen en inloggen via ssh 
+enkel mogelijk is op maandagen en vrijdagen voor 
+pam1 en pam2. Uiteraard pas je deze dagen aan om te 
+kunnen testen.
+
+/etc/security/time.conf aanpassen:
+##########################################
+sshd ; * ; gebruiker1 | gebruiker2 ; MoFr0000-2400
+login; * ; gebruiker1 | gebruiker2 ; MoFr0000-2400
+##########################################
+
+-----------------------------------------------------------
+9. Wat gebeurt er indien iemand zich aanmeldt via een service
+ die niet voorkomt in de directory /etc/pam.d?
+
+other wordt gebruikt.
+
+
+
+
+

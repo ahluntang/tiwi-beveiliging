@@ -1,0 +1,291 @@
+Groep 15 & 32:
+	Christophe Sysmans
+	Peter Timmerman
+	Kenny Goossens
+	Ah-Lun Tang
+
+VPN
+
+Voorbereiding
+############################################################
+Beide machines stellen we in als gateway met het commando:
+
+	echo 1 > /proc/sys/net/ipv4/ip_forward
+
+En we laten de nodige routes bepalen via RIP (xorp).
+
+1. Voorzie een veilige IPSec-verbinding tussen de twee 
+clientcomputers. Test eerst uit met ESP zonder AH, daarna 
+met AH zonder ESP.
+############################################################
+We stellen een bestand op vraag1_esp.vpn.
+en we voeren het volgende commando uit:
+
+	setkey -f vraag1_esp.vpn
+
+Dit bestand wisselen we uit tussen de hosts. Telkens dient 
+in door out vervangen te worden en omgekeerd.
+Deze file heeft volgende inhoud:
+
+	flush;
+	spdflush;
+
+	add 192.168.65.1 192.168.82.1 esp 0x10001 -m transport 
+		-E des-cbc 0x3ffe05014819ffff;
+	add 192.168.82.1 192.168.65.1 esp 0x10001 -m transport 
+		-E des-cbc 0x3ffe05014819ffff;
+
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P in 
+		ipsec esp/transport//require;
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P out 
+		ipsec esp/transport//require;
+
+Om te werken met authentication headers, passen we 
+bovenstaand bestand enigzins aan:
+	
+	add 192.168.65.1 192.168.82.1 ah 123456 -A hmac-sha1 
+		"AH SA configuration!";
+	add 192.168.82.1 192.168.65.1 ah 123456 -A hmac-sha1 
+		"AH SA configuration!";
+
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P in 
+		ipsec ah/transport//require;
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P out 
+		ipsec ah/transport//require;
+
+Uitvoer in wireshark:		
+ESP:
+No.	Time		Source		Destination	Protocol Info
+260	442.867250	192.168.65.1	192.168.82.1	ESP	 
+	ESP (SPI=0x00010001)
+261	442.867559	192.168.82.1	192.168.65.1	ICMP	 
+	Echo (ping) reply(id=0x0e79, seq(be/le)=20/5120, ttl=62)
+
+Encapsulating Security Payload (bij ESP)
+ESP SPI: 0x00010001
+ESP Sequence: 22
+
+AH:
+377	815.294647	192.168.65.1	192.168.82.1	ICMP	
+	Echo (ping) request(id=0x0eeb, seq(be/le)=11/2816, ttl=64)
+378	815.294974	192.168.82.1	192.168.65.1	ICMP	
+	Echo (ping) reply(id=0x0eeb, seq(be/le)=11/2816, ttl=62)
+
+Authentication Header (bij reply)
+Next Header: ICMP (0x01)
+Length: 24
+AH SPI: 0x0001e240
+AH Sequence: 11
+AH ICV: cbf121e2e64bac7bddfb76fd
+
+
+2. Voortbouwend op vorige vraag test je nu uit of je het 
+verkeer tussen de clients kan encrypteren en bovendien ook 
+kunt voorzien van de nodige authenticatie. Opnieuw wordt er
+geen gebruikgemaakt van tunneling.
+Er zijn nu twee mogelijkheden, eerst encrypteren en dan 
+authenticeren of omgekeerd. Ga telkens na of er tussen 
+de clients nog communicatie mogelijk is. Wanneer dit niet 
+het geval is, maak je een schets om aan te tonen dat de 
+uitgeteste configuratie niet kan werken.
+############################################################
+Om dit te verwezenlijken passen we wederom het bovenstaand 
+	bestand aan. Deze bevat dan volgende inhoud:
+
+	flush;
+	spdflush;
+
+	add 192.168.65.1 192.168.82.1 esp 0x10001 -m transport 
+		-E des-cbc 0x3ffe05014819ffff;
+	add 192.168.65.1 192.168.82.1 ah 123456 
+		-A hmac-sha1 "AH SA configuration!";
+
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P in 
+		ipsec esp/transport//require  ah/transport//require;
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P out 
+		ipsec esp/transport//require ah/transport//require;
+
+De configuratie waarbij de twee add lijnen zijn omgedraaid 
+(dus eerst ah dan pas esp) zal nooit werken. Dit is een omdat 
+bij encryptie de IP header zal aangepast worden, waardoor het 
+pakket niet langer geauthenticeerd is.
+
+Uitvoer in wireshark:
+540	1241.303554	192.168.65.1	192.168.82.1	ESP	
+	ESP (SPI=0x00010001)
+541	1241.303900	192.168.82.1	192.168.65.1	ICMP	
+	Echo (ping) reply(id=0x0f89, seq(be/le)=15/3840, ttl=62)
+
+Encapsulating Security Payload (by ESP)
+ESP SPI: 0x00010001
+ESP Sequence: 15
+
+
+3. Op de clientcomputers behoud je het authenticatiegedeelte 
+in transportmode. Het is dus niet nodig om het verkeer 
+tussen beide clients te encrypteren. Tussen de gateways 
+voorzie je nu een IPSec-tunnel. Test eerst uit met een 
+AH-tunnel, dan met een ESP-tunnel. Maak bij iedere 
+opstelling een schets die aantoont of de gevraagde 
+configuratie mogelijk is.
+############################################################
+De host file wordt opnieuw aangepast:
+
+	flush;
+	spdflush;
+
+	add 192.168.65.1 192.168.82.1 ah 123456 
+		-A hmac-sha1 "AH SA configuration!";
+	add 192.168.82.1 192.168.65.1 ah 123456 
+		-A hmac-sha1 "AH SA configuration!";
+
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P in 
+		ipsec ah/transport//require;
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P out 
+		ipsec ah/transport//require;
+
+En we stellen de tunnel in tussen de gateways op een 
+	analoge manier (via setkey met onderstaand bestand):
+
+	flush;
+	spdflush;
+
+	add 192.168.65.254 192.168.82.254 esp 0x10001 -m tunnel 
+		-E des-cbc 0x3ffe05014819ffff;
+	add 192.168.82.254 192.168.65.254 esp 0x10001 -m tunnel 
+		-E des-cbc 0x3ffe05014819ffff;
+
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P in 
+		ipsec esp/tunnel/192.168.65.254-192.168.82.254/require;
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P out 
+		ipsec esp/tunnel/192.168.82.254-192.168.65.254/require;
+
+(op gateway 2 zijn dus de in en out opnieuw omgewisseld)
+Om met AH tunneling te werken passen we het bestand opnieuw 
+	aan (let op de '-m tunnel'):
+
+	flush;
+	spdflush;
+
+	add 192.168.65.254 192.168.82.254 ah 123456 -m tunnel 
+		-A hmac-sha1 "AH SA configuration!";
+	add 192.168.82.254 192.168.65.254 ah 123456 -m tunnel 
+		-A hmac-sha1 "AH SA configuration!";
+
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P in 
+		ipsec ah/tunnel/192.168.65.254-192.168.82.254/require;
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P out 
+		ipsec ah/tunnel/192.168.82.254-192.168.65.254/require;
+
+Uitvoer wireshark:
+(AH):
+Eth1:
+119	51.000163	192.168.65.1	192.168.82.1	ICMP	
+	Echo (ping) request(id=0x12e9, seq(be/le)=73/18688, ttl=64)
+120	51.000245	192.168.65.254	192.168.65.1	ICMP	
+	Destination unreachable (Fragmentation needed)
+=> -m tunnel vergeten!!!! Daarna aangepast!
+
+(ESP):
+Eth0:
+1206	1201.762878	192.168.65.1	192.168.82.1	ICMP	
+	Echo (ping) request(id=0x10f8, seq(be/le)=186/47616, ttl=64)
+1207	1201.763383	192.168.82.1	192.168.65.1	ICMP	
+	Echo (ping) reply(id=0x10f8, seq(be/le)=186/47616, ttl=62)
+
+Eth1:
+252	57.910170	192.168.65.254	192.168.82.254	ESP	
+	ESP (SPI=0x00010001)
+253	57.910572	192.168.82.254	192.168.65.254	ESP	
+	ESP (SPI=0x00010002)
+254	57.910572	192.168.82.1	192.168.65.1	ICMP	
+	Echo (ping) reply(id=0x112c, seq(be/le)=15/3840, ttl=63)
+	
+	
+4. Net zoals vorige vraag zet je tussen de beide gateways 
+een ESP-tunnel op. Aanvullend zorg je ervoor dat er tussen 
+beide gateways authenticatie gebeurt in transportmode.
+Beide clients maken nog steeds gebruik van AH in 
+transportmode. Test uit en maak opnieuw de nodige schetsen.
+############################################################
+We passen de gateway files aan:
+
+	flush;
+	spdflush;
+
+	add 192.168.65.254 192.168.82.254 esp 0x10001 -m tunnel 
+		-E des-cbc 0x3ffe05014819ffff;
+	add 192.168.82.254 192.168.65.254 esp 0x10002 -m tunnel 
+		-E des-cbc 0x3ffe05014819ffff;
+
+	add 192.168.65.254 192.168.82.254 ah 123456 
+		-A hmac-sha1 "AH SA configuration!";
+	add 192.168.82.254 192.168.65.254 ah 123456 
+		-A hmac-sha1 "AH SA configuration!";
+
+	spdadd 192.168.65.0/24 192.168.82.0/24 any -P in ipsec 
+		esp/tunnel/192.168.65.254-192.168.82.254/require  
+		ah/transport//require;
+	spdadd 192.168.82.0/24 192.168.65.0/24 any -P out ipsec 
+		esp/tunnel/192.168.82.254-192.168.65.254/require  
+		ah/transport//require;
+
+De volgorde van de add lijnen zijn belangrijk (cfr. vraag 2).
+
+Eth1:
+1987	598.769158	192.168.65.254	192.168.82.254	ESP	
+	ESP (SPI=0x00010001)
+1988	598.769608	192.168.82.254	192.168.65.254	ESP	
+	ESP (SPI=0x00010002)
+1989	598.769608	192.168.82.1	192.168.65.1	ICMP	
+	Echo (ping) reply(id=0x11ed, seq(be/le)=31/7936, ttl=63)
+	
+Authentication Header (bij reply)
+Next Header: ICMP (0x01)
+Length: 24
+AH SPI: 0x0001e240
+AH Sequence: 97
+AH ICV: 8c4d1db64d5e191647296f37
+
+
+5. Herneem de vorige vraag maar gebruik nu de racoon-daemon 
+voor het aanmaken van de SA's op de clients en op de 
+gateways. Om niet vanaf nul te moeten vertrekken kan je 
+gebruikmaken van dit configuratiebestand. Vergeet niet om 
+het bestand /etc/racoon/psk.txt aan te vullen zodat beide 
+eindpunten over dezelfde sleutel beschikken.
+Ter info, wanneer er geen verkeer optreedt tussen de 
+eindpunten, worden door racoon geen nieuwe SA's aangemaakt! 
+Je doet er dus goed aan om steeds een console open te houden 
+waar je gewoon een ping stuurt naar het andere eindpunt.
+############################################################
+Voor de configuratie van racoon zelf gebruiken we het 
+	configuratiebestand zoals gegeven.
+We geven het bestand /etc/racoon/psk.txt volgende inhoud:
+
+	# file for pre-shared keys used for IKE authentication
+	# format is:  'identifier' 'key'
+	# For example:
+	#
+	#  10.1.1.1		flibbertigibbet
+	#  www.example.com      12345
+	#  foo@www.example.com  micropachycephalosaurus
+	#
+	192.168.82.1 blablabla
+	192.168.82.254 blablabla
+	192.168.65.1 blablabla
+	192.168.65.254 blablabla
+
+De daemon starten we op via:
+	
+	service racoon start
+
+En we verwijderen vervolgens de 'add' lijnen uit ons 
+	'setkey'-bestand (op zowel host als gateway).
+
+6. Tot slot kan je eens nagaan wat er gebeurt als je tussen 
+de gateways een dubbele tunnel opzet (ESP en AH in 
+tunnelmode). Test uit in hoeverre de volgorde een rol speelt 
+en maak opnieuw een schets om na te gaan of het gevraagde 
+enerzijds mogelijk is en anderzijds zinvol is.
+############################################################
